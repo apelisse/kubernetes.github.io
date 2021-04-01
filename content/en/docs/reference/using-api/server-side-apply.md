@@ -224,15 +224,41 @@ merging, see
 A number of markers were added in Kubernetes 1.16 and 1.17, to allow API
 developers to describe the merge strategy supported by lists, maps, and
 structs. These markers can be applied to objects of the respective type,
-in Go files or in the OpenAPI schema definition of the 
+in Go files or in the OpenAPI schema definition of the
 [CRD](/docs/reference/generated/kubernetes-api/{{< param "version" >}}#jsonschemaprops-v1-apiextensions-k8s-io):
 
 | Golang marker | OpenAPI extension | Accepted values | Description | Introduced in |
 |---|---|---|---|---|
-| `//+listType` | `x-kubernetes-list-type` | `atomic`/`set`/`map` | Applicable to lists. `atomic` and `set` apply to lists with scalar elements only. `map` applies to lists of nested types only. If configured as `atomic`, the entire list is replaced during merge; a single manager manages the list as a whole at any one time. If `set` or `map`, different managers can manage entries separately. | 1.16          |
-| `//+listMapKey` | `x-kubernetes-list-map-keys` | Slice of map keys that uniquely identify entries for example `["port", "protocol"]` | Only applicable when `+listType=map`. A slice of strings whose values in combination must uniquely identify list entries. While there can be multiple keys, `listMapKey` is singular because keys need to be specified individually in the Go type. | 1.16 |
+| `//+listType` | `x-kubernetes-list-type` | `atomic`/`set`/`map` | Applicable to lists. `set` only applies to lists with scalar elements only. `map` applies to lists of nested types only. `atomic` can apply to any list. If configured as `atomic`, the entire list is completely replaced during merge; a single manager manages the list as a whole at any one time. If `set` or `map`, different managers can manage entries separately. | 1.16          |
+| `//+listMapKey` | `x-kubernetes-list-map-keys` | Slice of map keys that uniquely identify entries for example `["port", "protocol"]` | Only applicable when `+listType=map`. A slice of strings whose values in combination must uniquely identify list entries. While there can be multiple keys, `listMapKey` is singular because keys need to be specified individually in the Go type. The key fields must be scalars. | 1.16 |
 | `//+mapType` | `x-kubernetes-map-type` | `atomic`/`granular` | Applicable to maps. `atomic` means that the map can only be entirely replaced by a single manager. `granular` means that the map supports separate managers updating individual fields. | 1.17 |
 | `//+structType` | `x-kubernetes-map-type` | `atomic`/`granular` | Applicable to structs; otherwise same usage and OpenAPI annotation as `//+mapType`.| 1.17 |
+
+If `listType` is missing, a `patchMergeStrategy=merge` marker will be
+converted into a `listType=map` and the corresponding `patchMergeKey`
+marker will be converted into `listMapKey`.
+
+`atomic` is always recursive and these topology markers won't be
+evaluated within an atomic type.
+
+These markers are specified as comments and don't have to be repeated as
+field tags.
+
+#### Compatibility across topology changes
+
+Changing the topology of types that have existing objects will have
+different consequences depending on the type of change.
+
+When the `listType`, `mapType`, or `structType` changes from
+`map`/`set`/`granular` to `atomic`, the whole list, map or struct of
+existing objects will end-up being owned by actors who owned an element
+of these types. This means that any further change to these objects
+would cause a conflict.
+
+When a list, map, or struct goes from atomic to `map`/`set`/`granular`,
+no conflict will be produced when objects with that structure is later
+changed. For that reason, it is not recommended to change a type from
+`atomic` to `map`/`set`/`granular`.
 
 ### Custom Resources
 
@@ -458,4 +484,3 @@ Server Side Apply is a beta feature, so it is enabled by default. To turn this
 you need to include the `--feature-gates ServerSideApply=false` flag when
 starting `kube-apiserver`. If you have multiple `kube-apiserver` replicas, all
 should have the same flag setting.
-
