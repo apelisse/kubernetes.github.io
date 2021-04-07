@@ -255,10 +255,44 @@ existing objects will end-up being owned by actors who owned an element
 of these types. This means that any further change to these objects
 would cause a conflict.
 
-When a list, map, or struct goes from atomic to `map`/`set`/`granular`,
+When a list, map, or struct goes from `atomic` to `map`/`set`/`granular`,
 no conflict will be produced when objects with that structure is later
 changed. For that reason, it is not recommended to change a type from
 `atomic` to `map`/`set`/`granular`.
+
+Additionally, due to a limitation with the merging library, there is no way to
+distinguish between whether an empty or defaulted field was previously atomic
+(and is now granular) and one that has always been granular. As a result,
+anytime a list, map, or struct goes from `atomic` to `map`/`set`/`granular`, the
+`fieldManager` that owned the top-level list, map, or struct will go from owning
+the top-level field and all the nested fields to only the top level field and
+none of the nested fields.
+
+Take for example, the custom resource:
+```
+apiVersion: example.com/v1
+kind: Foo
+metadata:
+  name: foo-sample
+  managedFields:
+  - manager: manager-one
+    operation: Apply
+    apiVersion: example.com/v1
+    fields:
+      f:spec:
+        f:data: {}
+spec:
+  data:
+    key1: val1
+    key2: val2
+```
+Before `spec.data` gets changed from `atomic` to `granular`, `manager-one` owns
+the field `spec.data`, and because it is atomic, all the fields within it (`key1` and `key2`).
+When the CRD gets changed to make `spec.data` `granular`, `manager-one` will
+continue to own the top-level field `spec.data` (meaning no other managers can
+delete the map called `data` without a conflict), but it no longer owns `key1`
+and `key2`, so another manager can come along and modify/delete those without
+conflict.
 
 ### Custom Resources
 
